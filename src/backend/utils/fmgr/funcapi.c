@@ -1265,6 +1265,18 @@ TypeGetTupleDesc(Oid typeoid, List *colaliases)
 	return tupdesc;
 }
 
+static bool inline
+rest_of_char_same(const char *s1, const char *s2, int len)
+{
+    while (len > 0)
+    {
+        len--;
+        if (s1[len] != s2[len])
+            return false;
+    }
+    return true;
+}
+
 Datum levenshtein_distance(PG_FUNCTION_ARGS)
 {
     text *str_01 = PG_GETARG_DATUM(0);
@@ -1276,8 +1288,7 @@ Datum levenshtein_distance(PG_FUNCTION_ARGS)
     int *prev;
     int *curr;
     int *s_char_len = 0;
-    int i,
-            j;
+    int i, j;
     const char *s_data;
     const char *t_data;
     const char *y;
@@ -1324,7 +1335,7 @@ Datum levenshtein_distance(PG_FUNCTION_ARGS)
     for (i = 0; i < m; i++)
         prev[i] = i;
 
-    for (y = t_data, j; j < n; j++)
+    for (y = t_data, j = 1; j < n; j++)
     {
         int *temp;
         const char *x = s_data;

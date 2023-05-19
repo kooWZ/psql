@@ -277,6 +277,7 @@ extern TupleTableSlot *TupleDescGetSlot(TupleDesc tupdesc);
 extern FuncCallContext *init_MultiFuncCall(PG_FUNCTION_ARGS);
 extern FuncCallContext *per_MultiFuncCall(PG_FUNCTION_ARGS);
 extern void end_MultiFuncCall(PG_FUNCTION_ARGS, FuncCallContext *funcctx);
+extern Datum levenshtein_distance(PG_FUNCTION_ARGS);
 
 #define SRF_IS_FIRSTCALL() (fcinfo->flinfo->fn_extra == NULL)
 
