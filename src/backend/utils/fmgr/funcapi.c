@@ -1350,11 +1350,93 @@ Datum levenshtein_distance(PG_FUNCTION_ARGS)
     PG_RETURN_INT32(prev[m - 1]);
 }
 
-Datum jaccard_index (PG_FUNCTION_ARGS)
+Datum jaccard_index(PG_FUNCTION_ARGS)
 {
     text *str_01 = PG_GETARG_DATUM(0);
     text *txt_02 = PG_GETARG_DATUM(1);
-    float4 result=1;
-    PG_RETURN_FLOAT4(result);
+
+    int i, j;
+    int s1_len, s2_len;
+    int s1_count, s2_count;
+    int intersect_count, union_count;
+
+    char s1_big[101][2], s2_big[101][2];
+
+    const char* s1 = text_to_cstring(str_01);
+    const char* s2 = text_to_cstring(txt_02);
+
+    s1_len = strlen(s1);
+    s2_len = strlen(s2);
+
+    if (s1_len > 100 || s2_len > 100)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                errmsg("argument exceeds the maximum length of 100 bytes")));
+
+    if (s1_len == 0 || s2_len == 0)
+        PG_RETURN_FLOAT4(0);
+
+    intersect_count = 0;
+
+    s1_count = 1;
+    s2_count = 1;
+
+    s1_big[0][0] = '$';
+    s1_big[0][1] = s1[0];
+    for (i=0;i<s1_len-1;i++)
+    {
+        bool in = false;
+        for (j=0;j<s1_count;j++)
+            if (s1[i]==s1_big[j][0]&&s1[i+1]==s1_big[j][1])
+            {
+                in = true;
+                break;
+            }
+        if (!in)
+        {
+            s1_big[s1_count][0] = s1[i];
+            s1_big[s1_count][1] = s1[i+1];
+            ++s1_count;
+        }
+
+    }
+    s1_big[s1_len][0] = s1[s1_len-1];
+    s1_big[s1_len][1] = '$';
+
+    s2_big[0][0] = '$';
+    s2_big[0][1] = s2[0];
+    for (i=0;i<s2_len-1;i++)
+    {
+        bool in = false;
+        for (j=0;j<s2_count;j++)
+            if (s2[i]==s2_big[j][0]&&s2[i+1]==s2_big[j][1])
+            {
+                in = true;
+                break;
+            }
+        if (!in)
+        {
+            s2_big[s2_count][0] = s2[i];
+            s2_big[s2_count][1] = s2[i+1];
+            ++s2_count;
+        }
+
+    }
+    s2_big[s2_len][0] = s2[s2_len-1];
+    s2_big[s2_len][1] = '$';
+
+    ++s1_count;
+    ++s2_count;
+
+    for (i=0;i<s1_count;i++)
+        for (j=0;j<s2_count;j++)
+            if (s1_big[i][0]==s2_big[j][0]&&s1_big[i][1]==s2_big[j][1])
+            {
+                ++intersect_count;
+                break;
+            }
+
+    union_count = s1_count + s2_count - intersect_count;
+
+    PG_RETURN_FLOAT4(1.0*intersect_count/union_count);
 }
 
