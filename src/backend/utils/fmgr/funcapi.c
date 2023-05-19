@@ -1277,54 +1277,38 @@ rest_of_char_same(const char *s1, const char *s2, int len)
     return true;
 }
 
+static bool inline
+lower_equal(const char* c1, const char* c2)
+{
+    return ((*c1>='A'&&*c1<='Z')?(*c1)+32:*c1) == ((*c2>='A'&&*c2<='Z')?(*c2)+32:*c2);
+}
+
 Datum levenshtein_distance(PG_FUNCTION_ARGS)
 {
     text *str_01 = PG_GETARG_DATUM(0);
     text *txt_02 = PG_GETARG_DATUM(1);
-    int m,
-            n,
-            s_bytes,
-            t_bytes;
-    int *prev;
-    int *curr;
-    int *s_char_len = 0;
+
+    int m, n;
+    int *prev, *curr;
     int i, j;
-    const char *s_data;
-    const char *t_data;
+    const char *s_data, *t_data;
     const char *y;
 
     s_data = VARDATA_ANY(str_01);
     t_data = VARDATA_ANY(txt_02);
 
-    s_bytes = VARSIZE_ANY_EXHDR(str_01);
-    t_bytes = VARSIZE_ANY_EXHDR(txt_02);
-    m = pg_mbstrlen_with_len(s_data, s_bytes);
-    n = pg_mbstrlen_with_len(t_data, t_bytes);
+    m = strlen(s_data);
+    n = strlen(t_data);
+
+    if (m > 100 || n > 100)
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("argument exceeds the maximum length of 100 bytes")));
 
     if (!m)
         return n * 1;
     if (!n)
         return m * 1;
-
-    if (m > 100 ||
-        n > 100)
-        ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("argument exceeds the maximum length of 100 bytes")));
-
-    if (m != s_bytes || n != t_bytes)
-    {
-        int i;
-        const char *cp = s_data;
-
-        s_char_len = (int *)palloc((m + 1) * sizeof(int));
-        for (i = 0; i < m; ++i)
-        {
-            s_char_len[i] = pg_mblen(cp);
-            cp += s_char_len[i];
-        }
-        s_char_len[i] = 0;
-    }
 
     ++m;
     ++n;
@@ -1344,46 +1328,16 @@ Datum levenshtein_distance(PG_FUNCTION_ARGS)
         curr[0] = j;
         i = 1;
 
-        if (s_char_len != 0)
+        for (; i < m; i++)
         {
-            for (; i < m; i++)
-            {
-                int ins;
-                int del;
-                int sub;
-                int x_char_len = s_char_len[i - 1];
+            int ins = prev[i] + 1;
+            int del = curr[i - 1] + 1;
+            int sub = prev[i - 1] + (lower_equal(x, y) ? 0 : 1);
 
-                ins = prev[i] + 1;
-                del = curr[i - 1] + 1;
-                if (x[x_char_len - 1] == y[y_char_len - 1] && x_char_len == y_char_len &&
-                    (x_char_len == 1 || rest_of_char_same(x, y, x_char_len)))
-                    sub = prev[i - 1];
-                else
-                    sub = prev[i - 1] + 1;
+            curr[i] = Min(ins, del);
+            curr[i] = Min(curr[i], sub);
 
-                curr[i] = Min(ins, del);
-                curr[i] = Min(curr[i], sub);
-
-                x += x_char_len;
-            }
-        }
-        else
-        {
-            for (; i < m; i++)
-            {
-                int ins;
-                int del;
-                int sub;
-
-                ins = prev[i] + 1;
-                del = curr[i - 1] + 1;
-                sub = prev[i - 1] + ((*x == *y) ? 0 : 1);
-
-                curr[i] = Min(ins, del);
-                curr[i] = Min(curr[i], sub);
-
-                x++;
-            }
+            x++;
         }
 
         temp = curr;
