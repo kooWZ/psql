@@ -30,3 +30,6 @@ lib*dll.def
 /pgsql.sln.cache
 /Debug/
 /Release/
+/.idea/misc.xml
+/.idea/vcs.xml
+/.idea/.gitignore
