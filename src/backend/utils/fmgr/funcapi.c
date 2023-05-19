@@ -1294,8 +1294,8 @@ Datum levenshtein_distance(PG_FUNCTION_ARGS)
     const char *s_data, *t_data;
     const char *y;
 
-    s_data = VARDATA_ANY(str_01);
-    t_data = VARDATA_ANY(txt_02);
+    s_data = text_to_cstring(str_01);
+    t_data = text_to_cstring(txt_02);
 
     m = strlen(s_data);
     n = strlen(t_data);
@@ -1323,7 +1323,7 @@ Datum levenshtein_distance(PG_FUNCTION_ARGS)
     {
         int *temp;
         const char *x = s_data;
-        int y_char_len = n != t_bytes + 1 ? pg_mblen(y) : 1;
+        int y_char_len = 1;
 
         curr[0] = j;
         i = 1;
