@@ -1264,3 +1264,20 @@ TypeGetTupleDesc(Oid typeoid, List *colaliases)
 
 	return tupdesc;
 }
+
+Datum levenshtein_distance(PG_FUNCTION_ARGS)
+{
+    text *str_01 = PG_GETARG_DATUM(0);
+    text *txt_02 = PG_GETARG_DATUM(1);
+    int32 result=1;
+    PG_RETURN_INT32(result);
+}
+
+Datum jaccard_index (PG_FUNCTION_ARGS)
+{
+    text *str_01 = PG_GETARG_DATUM(0);
+    text *txt_02 = PG_GETARG_DATUM(1);
+    float4 result=1;
+    PG_RETURN_FLOAT4(result);
+}
+
