@@ -1277,10 +1277,15 @@ rest_of_char_same(const char *s1, const char *s2, int len)
     return true;
 }
 
-static bool inline
-lower_equal(const char* c1, const char* c2)
+static char inline
+to_lower(char c)
 {
-    return ((*c1>='A'&&*c1<='Z')?(*c1)+32:*c1) == ((*c2>='A'&&*c2<='Z')?(*c2)+32:*c2);
+    if (c >= 'A' && c <= 'Z')
+    {
+        return c+32;
+    } else {
+        return c;
+    }
 }
 
 Datum levenshtein_distance(PG_FUNCTION_ARGS)
@@ -1332,7 +1337,7 @@ Datum levenshtein_distance(PG_FUNCTION_ARGS)
         {
             int ins = prev[i] + 1;
             int del = curr[i - 1] + 1;
-            int sub = prev[i - 1] + (lower_equal(x, y) ? 0 : 1);
+            int sub = prev[i - 1] + (to_lower(*x)== to_lower(*y) ? 0 : 1);
 
             curr[i] = Min(ins, del);
             curr[i] = Min(curr[i], sub);
@@ -1381,47 +1386,47 @@ Datum jaccard_index(PG_FUNCTION_ARGS)
     s2_count = 1;
 
     s1_big[0][0] = '$';
-    s1_big[0][1] = s1[0];
+    s1_big[0][1] = to_lower(s1[0]);
     for (i=0;i<s1_len-1;i++)
     {
         bool in = false;
         for (j=0;j<s1_count;j++)
-            if (s1[i]==s1_big[j][0]&&s1[i+1]==s1_big[j][1])
+            if (to_lower(s1[i])==s1_big[j][0]&&to_lower(s1[i+1])==s1_big[j][1])
             {
                 in = true;
                 break;
             }
         if (!in)
         {
-            s1_big[s1_count][0] = s1[i];
-            s1_big[s1_count][1] = s1[i+1];
+            s1_big[s1_count][0] = to_lower(s1[i]);
+            s1_big[s1_count][1] = to_lower(s1[i+1]);
             ++s1_count;
         }
 
     }
-    s1_big[s1_len][0] = s1[s1_len-1];
+    s1_big[s1_len][0] = to_lower(s1[s1_len-1]);
     s1_big[s1_len][1] = '$';
 
     s2_big[0][0] = '$';
-    s2_big[0][1] = s2[0];
+    s2_big[0][1] = to_lower(s2[0]);
     for (i=0;i<s2_len-1;i++)
     {
         bool in = false;
         for (j=0;j<s2_count;j++)
-            if (s2[i]==s2_big[j][0]&&s2[i+1]==s2_big[j][1])
+            if (to_lower(s2[i])==s2_big[j][0]&&to_lower(s2[i+1])==s2_big[j][1])
             {
                 in = true;
                 break;
             }
         if (!in)
         {
-            s2_big[s2_count][0] = s2[i];
-            s2_big[s2_count][1] = s2[i+1];
+            s2_big[s2_count][0] = to_lower(s2[i]);
+            s2_big[s2_count][1] = to_lower(s2[i+1]);
             ++s2_count;
         }
 
     }
-    s2_big[s2_len][0] = s2[s2_len-1];
+    s2_big[s2_len][0] = to_lower(s2[s2_len-1]);
     s2_big[s2_len][1] = '$';
 
     ++s1_count;
