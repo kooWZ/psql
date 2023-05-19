@@ -1269,8 +1269,120 @@ Datum levenshtein_distance(PG_FUNCTION_ARGS)
 {
     text *str_01 = PG_GETARG_DATUM(0);
     text *txt_02 = PG_GETARG_DATUM(1);
-    int32 result=1;
-    PG_RETURN_INT32(result);
+    int m,
+            n,
+            s_bytes,
+            t_bytes;
+    int *prev;
+    int *curr;
+    int *s_char_len = 0;
+    int i,
+            j;
+    const char *s_data;
+    const char *t_data;
+    const char *y;
+
+    s_data = VARDATA_ANY(str_01);
+    t_data = VARDATA_ANY(txt_02);
+
+    s_bytes = VARSIZE_ANY_EXHDR(str_01);
+    t_bytes = VARSIZE_ANY_EXHDR(txt_02);
+    m = pg_mbstrlen_with_len(s_data, s_bytes);
+    n = pg_mbstrlen_with_len(t_data, t_bytes);
+
+    if (!m)
+        return n * 1;
+    if (!n)
+        return m * 1;
+
+    if (m > 100 ||
+        n > 100)
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("argument exceeds the maximum length of 100 bytes")));
+
+    if (m != s_bytes || n != t_bytes)
+    {
+        int i;
+        const char *cp = s_data;
+
+        s_char_len = (int *)palloc((m + 1) * sizeof(int));
+        for (i = 0; i < m; ++i)
+        {
+            s_char_len[i] = pg_mblen(cp);
+            cp += s_char_len[i];
+        }
+        s_char_len[i] = 0;
+    }
+
+    ++m;
+    ++n;
+
+    prev = (int *)palloc(2 * m * sizeof(int));
+    curr = prev + m;
+
+    for (i = 0; i < m; i++)
+        prev[i] = i;
+
+    for (y = t_data, j; j < n; j++)
+    {
+        int *temp;
+        const char *x = s_data;
+        int y_char_len = n != t_bytes + 1 ? pg_mblen(y) : 1;
+
+        curr[0] = j;
+        i = 1;
+
+        if (s_char_len != 0)
+        {
+            for (; i < m; i++)
+            {
+                int ins;
+                int del;
+                int sub;
+                int x_char_len = s_char_len[i - 1];
+
+                ins = prev[i] + 1;
+                del = curr[i - 1] + 1;
+                if (x[x_char_len - 1] == y[y_char_len - 1] && x_char_len == y_char_len &&
+                    (x_char_len == 1 || rest_of_char_same(x, y, x_char_len)))
+                    sub = prev[i - 1];
+                else
+                    sub = prev[i - 1] + 1;
+
+                curr[i] = Min(ins, del);
+                curr[i] = Min(curr[i], sub);
+
+                x += x_char_len;
+            }
+        }
+        else
+        {
+            for (; i < m; i++)
+            {
+                int ins;
+                int del;
+                int sub;
+
+                ins = prev[i] + 1;
+                del = curr[i - 1] + 1;
+                sub = prev[i - 1] + ((*x == *y) ? 0 : 1);
+
+                curr[i] = Min(ins, del);
+                curr[i] = Min(curr[i], sub);
+
+                x++;
+            }
+        }
+
+        temp = curr;
+        curr = prev;
+        prev = temp;
+
+        y += y_char_len;
+    }
+
+    PG_RETURN_INT32(prev[m - 1]);
 }
 
 Datum jaccard_index (PG_FUNCTION_ARGS)
