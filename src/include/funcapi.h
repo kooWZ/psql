@@ -278,6 +278,7 @@ extern FuncCallContext *init_MultiFuncCall(PG_FUNCTION_ARGS);
 extern FuncCallContext *per_MultiFuncCall(PG_FUNCTION_ARGS);
 extern void end_MultiFuncCall(PG_FUNCTION_ARGS, FuncCallContext *funcctx);
 extern Datum levenshtein_distance(PG_FUNCTION_ARGS);
+extern Datum levenshtein_distance_traditional(PG_FUNCTION_ARGS);
 extern Datum jaccard_index(PG_FUNCTION_ARGS);
 
 #define SRF_IS_FIRSTCALL() (fcinfo->flinfo->fn_extra == NULL)

@@ -1288,6 +1288,50 @@ to_lower(char c)
     }
 }
 
+Datum levenshtein_distance_traditional(PG_FUNCTION_ARGS)
+{
+    text *str_01 = PG_GETARG_DATUM(0);
+    text *txt_02 = PG_GETARG_DATUM(1);
+
+    int m, n;
+    const char *s_data, *t_data;
+
+    s_data = text_to_cstring(str_01);
+    t_data = text_to_cstring(txt_02);
+
+    m = strlen(s_data);
+    n = strlen(t_data);
+
+    if (m > 100 || n > 100)
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("argument exceeds the maximum length of 100 bytes")));
+
+    if (!m)
+        return n * 1;
+    if (!n)
+        return m * 1;
+
+    int d[101][101] = {0};
+
+    for (int i=0;i<=m;i++)
+        d[i][0] = i;
+    for (int j=0;j<=n;j++)
+        d[0][j] = j;
+    for(int j=1;j<=n;j++)
+        for(int i=1;i<=m;i++)
+        {
+            if (to_lower(s_data[i-1]) == to_lower(t_data[j-1]))
+            {
+                d[i][j]=d[i-1][j-1];
+            } else {
+                int min1 = d[i-1][j]<d[i][j-1]?d[i-1][j]+1:d[i][j-1]+1;
+                d[i][j] = min1<d[i-1][j-1]+1?min1:d[i-1][j-1]+1;
+            }
+        }
+    PG_RETURN_INT32(d[m][n]);
+}
+
 Datum levenshtein_distance(PG_FUNCTION_ARGS)
 {
     text *str_01 = PG_GETARG_DATUM(0);
