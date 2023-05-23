@@ -25,7 +25,7 @@
 #include "executor/nodeNestloop.h"
 #include "utils/memutils.h"
 
-
+int BNLJ_block_size = 1;
 /* ----------------------------------------------------------------
  *		ExecNestLoop(node)
  *

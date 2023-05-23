@@ -20,5 +20,6 @@ extern NestLoopState *ExecInitNestLoop(NestLoop *node, EState *estate, int eflag
 extern TupleTableSlot *ExecNestLoop(NestLoopState *node);
 extern void ExecEndNestLoop(NestLoopState *node);
 extern void ExecReScanNestLoop(NestLoopState *node);
+extern int BNLJ_block_size;
 
 #endif   /* NODENESTLOOP_H */

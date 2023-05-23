@@ -75,6 +75,8 @@
 #include "utils/tzparser.h"
 #include "utils/xml.h"
 
+#include "executor/nodeNestloop.h"
+
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
 #endif
@@ -1441,6 +1443,15 @@ static struct config_bool ConfigureNamesBool[] =
 
 static struct config_int ConfigureNamesInt[] =
 {
+    {
+            {"BNLJ_block_size", PGC_USERSET, CUSTOM_OPTIONS,
+             gettext_noop("block size used in Block Nested Loop Join"),
+             NULL
+            },
+            &BNLJ_block_size,
+            1, 1, INT_MAX,
+            NULL, NULL, NULL
+    },
 	{
 		{"archive_timeout", PGC_SIGHUP, WAL_ARCHIVING,
 			gettext_noop("Forces a switch to the next xlog file if a "
