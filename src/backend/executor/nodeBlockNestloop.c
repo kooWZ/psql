@@ -1,22 +1,18 @@
 /*-------------------------------------------------------------------------
  *
- * nodeBlockNestloop.c
- *	  routines to support nest-loop joins
- *
- * Portions Copyright (c) 1996-2011, PostgreSQL Global Development Group
- * Portions Copyright (c) 1994, Regents of the University of California
- *
+ * 魔改后的nodeNestloop.c
+ *	  support block-nest-loop joins
  *
  * IDENTIFICATION
- *	  src/backend/executor/nodeBlockNestloop.c
+ *	  src/backend/executor/nodeNestloop.c
  *
  *-------------------------------------------------------------------------
  */
 /*
  *	 INTERFACE ROUTINES
- *		ExecNestLoop	 - process a nestloop join of two plans
- *		ExecInitNestLoop - initialize the join
- *		ExecEndNestLoop  - shut down the join
+ *		ExecNestLoop	 - BNLJ的主程序
+ *		ExecInitNestLoop - 初始化
+ *		ExecEndNestLoop  - 析构
  */
 
 #include "postgres.h"
@@ -24,8 +20,9 @@
 #include "executor/execdebug.h"
 #include "executor/nodeBlockNestloop.h"
 #include "utils/memutils.h"
+#include "miscadmin.h"
 
-
+int BNLJ_block_size = 1;
 /* ----------------------------------------------------------------
  *		ExecNestLoop(node)
  *
@@ -56,6 +53,66 @@
  *			   are prepared to return the first tuple.
  * ----------------------------------------------------------------
  */
+
+
+
+/*
+ * 从outer表中获取一块Block
+ */
+Tuplestorestate*
+fetchNextBlock(NestLoopState *node)
+{
+    /*
+     * 初始化TupleStoreState
+     */
+    Tuplestorestate *newBlock;
+    newBlock = tuplestore_begin_heap(false, false, work_mem);
+    tuplestore_set_eflags(newBlock, EXEC_FLAG_REWIND);
+
+    TupleSlot* newSlot;
+    int fetched = 0;
+    for(;;)
+    {
+        newSlot = ExecProcNode(outerPlanState(node));
+        if (TupIsNull(newSlot))
+            break;
+        tuplestore_puttupleslot(newBlock, newSlot);
+        fetched++;
+        if (fetched == BNLJ_block_size)
+            break;
+    }
+    /*
+     * 把读指针放回开头位置
+     */
+    tuplestore_rescan(newBlock);
+    return newBlock;
+}
+
+/*
+ * 从当前的TupleStoreSlot中读一个Slot
+ */
+TupleSlot*
+fetchNextSlot(NestLoopState *node)
+{
+    Tuplestorestate *currentBlock;
+
+    currentBlock = node->block;
+
+    /*
+     * 初始化Slot，让他拥有合适的TupleDesc(即Slot属性)
+     */
+    TupleTableSlot *newSlot;
+    newSlot = MakeTupleTableSlot();
+    ExecSetSlotDescriptor(newSlot,ExecGetResultType(outerPlan));
+
+    /*
+     * 以不复制的方式获得一个Slot(直接传指针)
+     */
+    tuplestore_gettupleslot(currentBlock, true, false, newSlot);
+
+    return newSlot;
+}
+
 TupleTableSlot *
 ExecBlockNestLoop(NestLoopState *node)
 {
@@ -68,6 +125,8 @@ ExecBlockNestLoop(NestLoopState *node)
     List	   *otherqual;
     ExprContext *econtext;
     ListCell   *lc;
+    Tuplestorestate *block; //added
+    bool at_eof; //added
 
     /*
      * get information from the node
@@ -80,6 +139,7 @@ ExecBlockNestLoop(NestLoopState *node)
     outerPlan = outerPlanState(node);
     innerPlan = innerPlanState(node);
     econtext = node->js.ps.ps_ExprContext;
+    block = node->block; //added
 
     /*
      * Check to see if we're still projecting out tuples from a previous join
@@ -106,81 +166,45 @@ ExecBlockNestLoop(NestLoopState *node)
     ResetExprContext(econtext);
 
     /*
-     * Ok, everything is setup for the join so now loop until we return a
-     * qualifying join tuple.
+     * 如果第一次进行loop，先fetch一个block
      */
+    if (block == NULL) //added
+    {
+        block = fetchNextBlock(node);
+        node->block = block;
+    }
+
     ENL1_printf("entering main loop");
 
     for (;;)
     {
         /*
-         * If we don't have an outer tuple, get the next one and reset the
-         * inner scan.
+         * 先获取内表
+         * 如果需要新的Inner,就调用子节点获取一个
+         * 如果不需要，就用econtext中保存的上次的
          */
-        if (node->nl_NeedNewOuter)
+        if (node->nl_NeedNewInner)
         {
-            ENL1_printf("getting new outer tuple");
-            outerTupleSlot = ExecProcNode(outerPlan);
+            ENL1_printf("getting new inner tuple");
 
-            /*
-             * if there are no more outer tuples, then the join is complete..
-             */
-            if (TupIsNull(outerTupleSlot))
-            {
-                ENL1_printf("no outer tuple, ending join");
-                return NULL;
-            }
-
-            ENL1_printf("saving new outer tuple information");
-            econtext->ecxt_outertuple = outerTupleSlot;
-            node->nl_NeedNewOuter = false;
-            node->nl_MatchedOuter = false;
-
-            /*
-             * fetch the values of any outer Vars that must be passed to the
-             * inner scan, and store them in the appropriate PARAM_EXEC slots.
-             */
-            foreach(lc, nl->nestParams)
-            {
-                NestLoopParam *nlp = (NestLoopParam *) lfirst(lc);
-                int			paramno = nlp->paramno;
-                ParamExecData *prm;
-
-                prm = &(econtext->ecxt_param_exec_vals[paramno]);
-                /* Param value should be an OUTER var */
-                Assert(IsA(nlp->paramval, Var));
-                Assert(nlp->paramval->varno == OUTER);
-                Assert(nlp->paramval->varattno > 0);
-                prm->value = slot_getattr(outerTupleSlot,
-                                          nlp->paramval->varattno,
-                                          &(prm->isnull));
-                /* Flag parameter value as changed */
-                innerPlan->chgParam = bms_add_member(innerPlan->chgParam,
-                                                     paramno);
-            }
-
-            /*
-             * now rescan the inner plan
-             */
-            ENL1_printf("rescanning inner plan");
-            ExecReScan(innerPlan);
+            innerTupleSlot = ExecProcNode(innerPlan);
+            econtext->ecxt_innertuple = innerTupleSlot;
+        } else {
+            innerTupleSlot = econtext->ecxt_innertuple;
         }
 
         /*
-         * we have an outerTuple, try to get the next inner tuple.
+         * 如果inner为空，说明对于这个block，内表已经扫描过一遍了
+         * 我们需要一个新的block
          */
-        ENL1_printf("getting new inner tuple");
-
-        innerTupleSlot = ExecProcNode(innerPlan);
-        econtext->ecxt_innertuple = innerTupleSlot;
-
         if (TupIsNull(innerTupleSlot))
         {
-            ENL1_printf("no inner tuple, need new outer tuple");
+            ENL1_printf("no inner tuple, need new block");
+            //TODO
+            node->nl_NeedNewOuter = true; //TODO
+            node->nl_NeedNewBlock = true;
 
-            node->nl_NeedNewOuter = true;
-
-            if (!node->nl_MatchedOuter &&
+            if (!node->nl_MatchedOuter && //TODO
                 (node->js.jointype == JOIN_LEFT ||
                  node->js.jointype == JOIN_ANTI))
             {
@@ -218,72 +242,146 @@ ExecBlockNestLoop(NestLoopState *node)
             }
 
             /*
-             * Otherwise just return to top of loop for a new outer tuple.
+             * Otherwise just return to top of loop for a new tuple.
              */
             continue;
         }
 
         /*
-         * at this point we have a new pair of inner and outer tuples so we
-         * test the inner and outer tuples to see if they satisfy the node's
-         * qualification.
-         *
-         * Only the joinquals determine MatchedOuter status, but all quals
-         * must pass to actually return the tuple.
+         * 更新外表Block
          */
-        ENL1_printf("testing qualification");
-
-        if (ExecQual(joinqual, econtext, false))
+        if (node->nl_NeedNewBlock)
         {
-            node->nl_MatchedOuter = true;
+            /*
+             * 释放旧的
+             */
+            tuplestore_end(block);
 
-            /* In an antijoin, we never return a matched tuple */
-            if (node->js.jointype == JOIN_ANTI)
-            {
-                node->nl_NeedNewOuter = true;
-                continue;		/* return to top of loop */
-            }
+            block = fetchNextBlock(node);
 
             /*
-             * In a semijoin, we'll consider returning the first match, but
-             * after that we're done with this outer tuple.
+             * 如果一整个Block都空，那么说明外表已经循环了一遍了，BLNJ结束
              */
-            if (node->js.jointype == JOIN_SEMI)
-                node->nl_NeedNewOuter = true;
+            if (getlen(block,false) == 0)
+                return NULL;
 
-            if (otherqual == NIL || ExecQual(otherqual, econtext, false))
-            {
-                /*
-                 * qualification was satisfied so we project and return the
-                 * slot containing the result tuple using ExecProject().
-                 */
-                TupleTableSlot *result;
-                ExprDoneCond isDone;
-
-                ENL1_printf("qualification succeeded, projecting tuple");
-
-                result = ExecProject(node->js.ps.ps_ProjInfo, &isDone);
-
-                if (isDone != ExprEndResult)
-                {
-                    node->js.ps.ps_TupFromTlist =
-                            (isDone == ExprMultipleResult);
-                    return result;
-                }
-            }
+            node->block = block;
+            node->nl_NeedNewBlock = false;
         }
 
         /*
-         * Tuple fails qual, so free per-tuple memory and try again.
+         * 判断是否到达尾部
          */
-        ResetExprContext(econtext);
+        at_eof = tuplestore_ateof(block);
 
-        ENL1_printf("qualification failed, looping");
+        /*
+         * 开始block内循环
+         */
+        for( ; !at_eof ; )
+        {
+            ENL1_printf("getting new outer tuple");
+            outerTupleSlot = fetchNewSlot(node);
+
+            if (TupIsNull(outerTupleSlot))
+            {
+                ENL1_printf("no outer tuple, fetching new block");
+                node->nl_NeedNewBlock = true;
+                continue;
+            }
+
+            ENL1_printf("saving new outer tuple information");
+            econtext->ecxt_outertuple = outerTupleSlot;
+            node->nl_NeedNewOuter = false; //?
+            node->nl_MatchedOuter = false;
+            //todo
+            at_eof = tuplestore_ateof(block);
+
+            /*
+             * fetch the values of any outer Vars that must be passed to the
+             * inner scan, and store them in the appropriate PARAM_EXEC slots.
+             */
+            foreach(lc, nl->nestParams) //TODO
+            {
+                NestLoopParam *nlp = (NestLoopParam *) lfirst(lc);
+                int			paramno = nlp->paramno;
+                ParamExecData *prm;
+
+                prm = &(econtext->ecxt_param_exec_vals[paramno]);
+                /* Param value should be an OUTER var */
+                Assert(IsA(nlp->paramval, Var));
+                Assert(nlp->paramval->varno == OUTER);
+                Assert(nlp->paramval->varattno > 0);
+                prm->value = slot_getattr(outerTupleSlot,
+                                          nlp->paramval->varattno,
+                                          &(prm->isnull));
+                /* Flag parameter value as changed */
+                innerPlan->chgParam = bms_add_member(innerPlan->chgParam,
+                                                     paramno);
+            }
+
+            /*
+             * 检查这一组inner和outer是否符合join条件
+             *
+             * Only the joinquals determine MatchedOuter status, but all quals
+             * must pass to actually return the tuple.
+             */
+
+            ENL1_printf("testing qualification");
+
+            if (ExecQual(joinqual, econtext, false))
+            {
+                node->nl_MatchedOuter = true;
+
+                /* In an antijoin, we never return a matched tuple */
+                if (node->js.jointype == JOIN_ANTI) //TODO
+                {
+                    node->nl_NeedNewOuter = true;
+                    //NeedNewBlock是否需要在这里改变？
+                    continue;		/* return to top of loop */
+                }
+
+                /*
+                 * In a semijoin, we'll consider returning the first match, but
+                 * after that we're done with this outer tuple.
+                 */
+                if (node->js.jointype == JOIN_SEMI) //TODO
+                    node->nl_NeedNewOuter = true;
+                //NeedNewBlock是否需要在这里改变？
+
+                if (otherqual == NIL || ExecQual(otherqual, econtext, false)) //TODO
+                {
+                    /*
+                     * qualification was satisfied so we project and return the
+                     * slot containing the result tuple using ExecProject().
+                     */
+                    TupleTableSlot *result;
+                    ExprDoneCond isDone;
+
+                    ENL1_printf("qualification succeeded, projecting tuple");
+
+                    result = ExecProject(node->js.ps.ps_ProjInfo, &isDone);
+
+                    if (isDone != ExprEndResult)
+                    {
+                        node->js.ps.ps_TupFromTlist =
+                                (isDone == ExprMultipleResult);
+                        return result;
+                    }
+                }
+            }
+
+            /*
+             * Tuple fails qual, so free per-tuple memory and try again.
+             */
+            ResetExprContext(econtext); //不会清空econtext->ecxt_innertuple
+
+            ENL1_printf("qualification failed, looping");
+        }
     }
 }
 
 /* ----------------------------------------------------------------
- *		ExecInitNestLoop
+ *		ExecInitNestLoop 初始化
  * ----------------------------------------------------------------
  */
 NestLoopState *
@@ -294,7 +392,7 @@ ExecInitBlockNestLoop(NestLoop *node, EState *estate, int eflags)
     /* check for unsupported flags */
     Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
-    NL1_printf("ExecInitNestLoop: %s\n",
+    NL1_printf("ExecInitBlockNestLoop: %s\n",
                "initializing node");
 
     /*
@@ -303,6 +401,7 @@ ExecInitBlockNestLoop(NestLoop *node, EState *estate, int eflags)
     nlstate = makeNode(NestLoopState);
     nlstate->js.ps.plan = (Plan *) node;
     nlstate->js.ps.state = estate;
+    nlstate->block = NULL; //added
 
     /*
      * Miscellaneous initialization
@@ -374,6 +473,8 @@ ExecInitBlockNestLoop(NestLoop *node, EState *estate, int eflags)
     nlstate->js.ps.ps_TupFromTlist = false;
     nlstate->nl_NeedNewOuter = true;
     nlstate->nl_MatchedOuter = false;
+    nlstate->nl_NeedNewInner= true; //added
+     nlstate->nl_NeedNewBlock = true; //added
 
     NL1_printf("ExecInitNestLoop: %s\n",
                "node initialized");
@@ -397,6 +498,12 @@ ExecEndBlockNestLoop(NestLoopState *node)
      * Free the exprcontext
      */
     ExecFreeExprContext(&node->js.ps);
+
+    /*
+     * 释放TupleStore
+     */
+    tuplestore_end(node->block);
+    node->block = NULL;
 
     /*
      * clean out the tuple table
@@ -438,4 +545,8 @@ ExecReScanBlockNestLoop(NestLoopState *node)
     node->js.ps.ps_TupFromTlist = false;
     node->nl_NeedNewOuter = true;
     node->nl_MatchedOuter = false;
+    node->nl_NeedNewInner = true;
+    tuplestore_end(node->block);
+    node->block = NULL;
+    node->nl_NeedNewBlock = true;
 }
