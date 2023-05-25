@@ -68,8 +68,7 @@ fetchNextBlock(NestLoopState *node)
     Tuplestorestate *newBlock;
     newBlock = tuplestore_begin_heap(false, false, work_mem);
     tuplestore_set_eflags(newBlock, EXEC_FLAG_REWIND);
-    //if (!(node->nl_reachedBlockEnd))
-    //{
+
     TupleTableSlot* newSlot;
     int fetched = 0;
     for(;;)
@@ -85,7 +84,7 @@ fetchNextBlock(NestLoopState *node)
         if (fetched == BNLJ_block_size)
             break;
     }
-    //}
+
     /*
      * 把读指针放回开头位置
      */
@@ -118,7 +117,6 @@ fetchNextSlot(NestLoopState *node)
         tuplestore_gettupleslot(currentBlock, true, false, newSlot);
     }
     while(list_member_int(node->nl_ExcludedOuter, get_readptr_index(currentBlock)-1));
-
 
     return newSlot;
 }
@@ -222,43 +220,40 @@ ExecBlockNestLoop(NestLoopState *node)
             node->nl_NeedNewOuter = true;
             node->nl_NeedNewBlock = true;
 
-//            if (node->js.jointype == JOIN_LEFT || node->js.jointype == JOIN_ANTI)
+//            if (node->js.jointype == JOIN_LEFT || node->js.jointype == JOIN_ANTI) //TODO:1.改变innertuple的影响？2.遍历不在excluded中的outer
 //            {
-//                //TODO 需要对block内的每个outer判断是否有inner
-//            }
-//            if (!node->nl_MatchedOuter &&
-//                (node->js.jointype == JOIN_LEFT ||
-//                 node->js.jointype == JOIN_ANTI))
-//            {
-//                /*
+//                foreach(index, nl_ExcludedOuter)
+//                {
+//                    /*
 //                 * We are doing an outer join and there were no join matches
 //                 * for this outer tuple.  Generate a fake join tuple with
 //                 * nulls for the inner tuple, and return it if it passes the
 //                 * non-join quals.
 //                 */
-//                econtext->ecxt_innertuple = node->nl_NullInnerTupleSlot;
+//                    econtext->ecxt_innertuple = node->nl_NullInnerTupleSlot;
 //
-//                ENL1_printf("testing qualification for outer-join tuple");
+//                    ENL1_printf("testing qualification for outer-join tuple");
 //
-//                if (otherqual == NIL || ExecQual(otherqual, econtext, false))
-//                {
-//                    /*
-//                     * qualification was satisfied so we project and return
-//                     * the slot containing the result tuple using
-//                     * ExecProject().
-//                     */
-//                    TupleTableSlot *result;
-//                    ExprDoneCond isDone;
-//
-//                    ENL1_printf("qualification succeeded, projecting tuple");
-//
-//                    result = ExecProject(node->js.ps.ps_ProjInfo, &isDone);
-//
-//                    if (isDone != ExprEndResult)
+//                    if (otherqual == NIL || ExecQual(otherqual, econtext, false))
 //                    {
-//                        node->js.ps.ps_TupFromTlist =
-//                                (isDone == ExprMultipleResult);
-//                        return result;
+//                        /*
+//                         * qualification was satisfied so we project and return
+//                         * the slot containing the result tuple using
+//                         * ExecProject().
+//                         */
+//                        TupleTableSlot *result;
+//                        ExprDoneCond isDone;
+//
+//                        ENL1_printf("qualification succeeded, projecting tuple");
+//
+//                        result = ExecProject(node->js.ps.ps_ProjInfo, &isDone);
+//
+//                        if (isDone != ExprEndResult)
+//                        {
+//                            node->js.ps.ps_TupFromTlist =
+//                                    (isDone == ExprMultipleResult);
+//                            return result;
+//                        }
 //                    }
 //                }
 //            }
@@ -311,13 +306,11 @@ ExecBlockNestLoop(NestLoopState *node)
             outerTupleSlot = fetchNextSlot(node);
 
             /*
-             * 如果outer为空,等价于eof
+             * 如果outer为空
              * 说明当前的inner已经扫描过这个block了，需要下一个inner
              */
-            if (TupIsNull(outerTupleSlot)) //FIXME
+            if (TupIsNull(outerTupleSlot))
             {
-//                ENL1_printf("no outer tuple, fetching new block");
-//                node->nl_NeedNewBlock = true;
                 node->nl_NeedNewInner = true;
                 break;
             }
@@ -369,7 +362,8 @@ ExecBlockNestLoop(NestLoopState *node)
                 {
                     lappend_int(nl_ExcludedOuter, get_readptr_index(block)-1);
                     node->nl_NeedNewOuter = true;
-                    continue;		/* return to top of loop */
+                    /* return to top of loop */
+                    continue;
                 }
 
                 /*
