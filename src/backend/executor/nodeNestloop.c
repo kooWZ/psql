@@ -532,7 +532,8 @@ ExecEndNestLoop(NestLoopState *node)
     /*
      * 释放TupleStore
      */
-    tuplestore_end(node->block);
+    if (node->block)
+        tuplestore_end(node->block);
     node->block = NULL;
     list_free(node->nl_ExcludedOuter);
 
@@ -578,7 +579,8 @@ ExecReScanNestLoop(NestLoopState *node)
     node->nl_MatchedOuter = false;
     node->nl_NeedNewInner = true;
     node->nl_reachedBlockEnd = false;
-    tuplestore_end(node->block);
+    if (node->block)
+        tuplestore_end(node->block);
     node->block = NULL;
     node->nl_NeedNewBlock = true;
 }
