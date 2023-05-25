@@ -1312,3 +1312,23 @@ readtup_heap(Tuplestorestate *state, unsigned int len)
 			elog(ERROR, "unexpected end of data");
 	return (void *) tuple;
 }
+
+/*
+ * 返回当前active的读指针的位置
+ */
+int
+get_readptr_index(Tuplestorestate *state)
+{
+    TSReadPointer *oldptr;
+    oldptr = &state->readptrs[state->activeptr];
+    return oldptr->current;
+}
+
+/*
+ * 返回tuplestore的长度
+ */
+unsigned int
+get_tuplestore_len(Tuplestorestate *state)
+{
+    return state->memtupcount;
+}

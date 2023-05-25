@@ -1464,8 +1464,10 @@ typedef struct NestLoopState
     bool        nl_NeedNewBlock; //added
     bool        nl_NeedNewInner; //added
 	bool		nl_MatchedOuter;
+    bool        nl_reachedBlockEnd; //added
 	TupleTableSlot *nl_NullInnerTupleSlot;
     Tuplestorestate *block;
+    List*       nl_ExcludedOuter; //added
 } NestLoopState;
 
 /* ----------------

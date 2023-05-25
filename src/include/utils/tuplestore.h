@@ -82,4 +82,7 @@ extern void tuplestore_clear(Tuplestorestate *state);
 
 extern void tuplestore_end(Tuplestorestate *state);
 
+extern int get_readptr_index(Tuplestorestate *state);
+
+extern unsigned int get_tuplestore_len(Tuplestorestate *state);
 #endif   /* TUPLESTORE_H */
