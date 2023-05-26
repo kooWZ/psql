@@ -1468,6 +1468,7 @@ typedef struct NestLoopState
 	TupleTableSlot *nl_NullInnerTupleSlot;
     Tuplestorestate *block;
     List*       nl_ExcludedOuter; //added
+    List*       nl_MatchedOuterIndexes; //added
 } NestLoopState;
 
 /* ----------------

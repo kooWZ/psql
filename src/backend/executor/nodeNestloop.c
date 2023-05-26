@@ -68,6 +68,13 @@ fetchNextBlock(NestLoopState *node)
     Tuplestorestate *newBlock;
     newBlock = tuplestore_begin_heap(false, false, work_mem);
     tuplestore_set_eflags(newBlock, EXEC_FLAG_REWIND);
+    tuplestore_alloc_read_pointer(newBlock, EXEC_FLAG_REWIND);
+    tuplestore_select_read_pointer(newBlock, 0);
+
+    list_free(node->nl_ExcludedOuter);
+    node->nl_ExcludedOuter = NULL;
+    list_free(node->nl_MatchedOuterIndexes);
+    node->nl_MatchedOuterIndexes = NULL;
 
     TupleTableSlot* newSlot;
     int fetched = 0;
@@ -122,7 +129,7 @@ fetchNextSlot(NestLoopState *node)
 }
 
 TupleTableSlot *
-ExecBlockNestLoop(NestLoopState *node)
+ExecNestLoop(NestLoopState *node)
 {
     NestLoop   *nl;
     PlanState  *innerPlan;
@@ -131,7 +138,6 @@ ExecBlockNestLoop(NestLoopState *node)
     TupleTableSlot *innerTupleSlot;
     List	   *joinqual;
     List	   *otherqual;
-    List       *nl_ExcludedOuter;
     ExprContext *econtext;
     ListCell   *lc;
     Tuplestorestate *block; //added
@@ -148,7 +154,7 @@ ExecBlockNestLoop(NestLoopState *node)
     innerPlan = innerPlanState(node);
     econtext = node->js.ps.ps_ExprContext;
     block = node->block; //added
-    nl_ExcludedOuter = node->nl_ExcludedOuter; //added
+
     /*
      * Check to see if we're still projecting out tuples from a previous join
      * tuple (because there is a function-returning-set in the projection
@@ -209,9 +215,58 @@ ExecBlockNestLoop(NestLoopState *node)
          * 如果inner为空，说明对于这个block，内表已经扫描过一遍了
          * 我们需要一个新的block
          */
-        if (TupIsNull(innerTupleSlot))
+        if (TupIsNull(innerTupleSlot) || innerTupleSlot == node->nl_NullInnerTupleSlot)
         {
             ENL1_printf("no inner tuple, need new block");
+
+            if (node->js.jointype == JOIN_LEFT || node->js.jointype == JOIN_ANTI)
+            {
+                tuplestore_select_read_pointer(block, 1);
+                int len = get_tuplestore_len(block);
+
+                int index = get_readptr_index(block)-1;
+                for (;index+1<len;)
+                {
+                    econtext->ecxt_outertuple = fetchNextSlot(node);
+                    index = get_readptr_index(block)-1;
+                    if (!list_member_int(node->nl_MatchedOuterIndexes, index))
+                    {
+                        /*
+                         * We are doing an outer join and there were no join matches
+                         * for this outer tuple.  Generate a fake join tuple with
+                         * nulls for the inner tuple, and return it if it passes the
+                         * non-join quals.
+                         */
+                        econtext->ecxt_innertuple = node->nl_NullInnerTupleSlot;
+
+                        ENL1_printf("testing qualification for outer-join tuple");
+
+                        if (otherqual == NIL || ExecQual(otherqual, econtext, false))
+                        {
+                            /*
+                             * qualification was satisfied so we project and return
+                             * the slot containing the result tuple using
+                             * ExecProject().
+                             */
+                            TupleTableSlot *result;
+                            ExprDoneCond isDone;
+
+                            ENL1_printf("qualification succeeded, projecting tuple");
+
+                            result = ExecProject(node->js.ps.ps_ProjInfo, &isDone);
+
+                            if (isDone != ExprEndResult)
+                            {
+                                node->js.ps.ps_TupFromTlist =
+                                        (isDone == ExprMultipleResult);
+                                return result;
+                            }
+                        }
+                    }
+                }
+                tuplestore_rescan(block);
+                tuplestore_select_read_pointer(block, 0);
+            }
 
             if (node->nl_reachedBlockEnd)
                 return NULL;
@@ -220,43 +275,6 @@ ExecBlockNestLoop(NestLoopState *node)
             node->nl_NeedNewOuter = true;
             node->nl_NeedNewBlock = true;
 
-//            if (node->js.jointype == JOIN_LEFT || node->js.jointype == JOIN_ANTI) //TODO:1.改变innertuple的影响？2.遍历不在excluded中的outer
-//            {
-//                foreach(index, nl_ExcludedOuter)
-//                {
-//                    /*
-//                 * We are doing an outer join and there were no join matches
-//                 * for this outer tuple.  Generate a fake join tuple with
-//                 * nulls for the inner tuple, and return it if it passes the
-//                 * non-join quals.
-//                 */
-//                    econtext->ecxt_innertuple = node->nl_NullInnerTupleSlot;
-//
-//                    ENL1_printf("testing qualification for outer-join tuple");
-//
-//                    if (otherqual == NIL || ExecQual(otherqual, econtext, false))
-//                    {
-//                        /*
-//                         * qualification was satisfied so we project and return
-//                         * the slot containing the result tuple using
-//                         * ExecProject().
-//                         */
-//                        TupleTableSlot *result;
-//                        ExprDoneCond isDone;
-//
-//                        ENL1_printf("qualification succeeded, projecting tuple");
-//
-//                        result = ExecProject(node->js.ps.ps_ProjInfo, &isDone);
-//
-//                        if (isDone != ExprEndResult)
-//                        {
-//                            node->js.ps.ps_TupFromTlist =
-//                                    (isDone == ExprMultipleResult);
-//                            return result;
-//                        }
-//                    }
-//                }
-//            }
 
             /*
              * inner从头开始
@@ -360,23 +378,30 @@ ExecBlockNestLoop(NestLoopState *node)
                 /* In an antijoin, we never return a matched tuple */
                 if (node->js.jointype == JOIN_ANTI) //fixed, TODO test
                 {
-                    lappend_int(nl_ExcludedOuter, get_readptr_index(block)-1);
+                    node->nl_ExcludedOuter = lappend_int(node->nl_ExcludedOuter, get_readptr_index(block)-1);
                     node->nl_NeedNewOuter = true;
                     /* return to top of loop */
                     continue;
                 }
 
                 /*
+                 * 如果是左连接，我们需要储存当前block中已经匹配上的index
+                 * 代替了node->nl_MatchedOuter的作用
+                 */
+                if (node->js.jointype == JOIN_LEFT)
+                    node->nl_MatchedOuterIndexes = lappend_int(node->nl_MatchedOuterIndexes, get_readptr_index(block)-1);
+
+                /*
                  * In a semijoin, we'll consider returning the first match, but
                  * after that we're done with this outer tuple.
                  */
-                if (node->js.jointype == JOIN_SEMI) //fixed, TODO test
+                if (node->js.jointype == JOIN_SEMI) //TODO test
                 {
-                    lappend_int(nl_ExcludedOuter, get_readptr_index(block)-1);
+                    node->nl_ExcludedOuter = lappend_int(node->nl_ExcludedOuter, get_readptr_index(block)-1);
                     node->nl_NeedNewOuter = true;
                 }
 
-                if (otherqual == NIL || ExecQual(otherqual, econtext, false)) //TODO test，应该没什么变化
+                if (otherqual == NIL || ExecQual(otherqual, econtext, false))
                 {
                     /*
                      * qualification was satisfied so we project and return the
@@ -431,6 +456,7 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
     nlstate->js.ps.state = estate;
     nlstate->block = NULL; //added
     nlstate->nl_ExcludedOuter = NULL;
+    nlstate->nl_MatchedOuterIndexes = NULL;
 
     /*
      * Miscellaneous initialization
@@ -536,6 +562,7 @@ ExecEndNestLoop(NestLoopState *node)
         tuplestore_end(node->block);
     node->block = NULL;
     list_free(node->nl_ExcludedOuter);
+    list_free(node->nl_MatchedOuterIndexes);
 
     /*
      * clean out the tuple table
@@ -583,4 +610,9 @@ ExecReScanNestLoop(NestLoopState *node)
         tuplestore_end(node->block);
     node->block = NULL;
     node->nl_NeedNewBlock = true;
+
+    list_free(node->nl_ExcludedOuter);
+    list_free(node->nl_MatchedOuterIndexes);
+    node->nl_ExcludedOuter = NULL;
+    node->nl_MatchedOuterIndexes = NULL;
 }
