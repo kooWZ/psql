@@ -1308,9 +1308,9 @@ Datum levenshtein_distance_traditional(PG_FUNCTION_ARGS)
                         errmsg("argument exceeds the maximum length of 100 bytes")));
 
     if (!m)
-        return n * 1;
+        PG_RETURN_INT32(n);
     if (!n)
-        return m * 1;
+        PG_RETURN_INT32(m);
 
     int d[101][101] = {0};
 
@@ -1355,9 +1355,9 @@ Datum levenshtein_distance(PG_FUNCTION_ARGS)
                         errmsg("argument exceeds the maximum length of 100 bytes")));
 
     if (!m)
-        return n * 1;
+        PG_RETURN_INT32(n);
     if (!n)
-        return m * 1;
+        PG_RETURN_INT32(m);
 
     ++m;
     ++n;
