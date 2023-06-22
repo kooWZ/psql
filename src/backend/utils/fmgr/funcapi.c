@@ -1340,6 +1340,7 @@ Datum levenshtein_distance(PG_FUNCTION_ARGS)
     int m, n;
     int *prev, *curr;
     int i, j;
+    int result;
     const char *s_data, *t_data;
     const char *y;
 
@@ -1396,7 +1397,10 @@ Datum levenshtein_distance(PG_FUNCTION_ARGS)
         y += y_char_len;
     }
 
-    PG_RETURN_INT32(prev[m - 1]);
+    result = prev[m - 1];
+    pfree(prev);
+
+    PG_RETURN_INT32(result);
 }
 
 Datum jaccard_index(PG_FUNCTION_ARGS)
@@ -1409,7 +1413,7 @@ Datum jaccard_index(PG_FUNCTION_ARGS)
     int s1_count, s2_count;
     int intersect_count, union_count;
 
-    char s1_big[101][2], s2_big[101][2];
+    char s1_bigram[101][2], s2_bigram[101][2];
 
     const char* s1 = text_to_cstring(str_01);
     const char* s2 = text_to_cstring(txt_02);
@@ -1429,56 +1433,56 @@ Datum jaccard_index(PG_FUNCTION_ARGS)
     s1_count = 1;
     s2_count = 1;
 
-    s1_big[0][0] = '$';
-    s1_big[0][1] = to_lower(s1[0]);
+    s1_bigram[0][0] = '$';
+    s1_bigram[0][1] = to_lower(s1[0]);
     for (i=0;i<s1_len-1;i++)
     {
         bool in = false;
         for (j=0;j<s1_count;j++)
-            if (to_lower(s1[i])==s1_big[j][0]&&to_lower(s1[i+1])==s1_big[j][1])
+            if (to_lower(s1[i])==s1_bigram[j][0]&&to_lower(s1[i+1])==s1_bigram[j][1])
             {
                 in = true;
                 break;
             }
         if (!in)
         {
-            s1_big[s1_count][0] = to_lower(s1[i]);
-            s1_big[s1_count][1] = to_lower(s1[i+1]);
+            s1_bigram[s1_count][0] = to_lower(s1[i]);
+            s1_bigram[s1_count][1] = to_lower(s1[i+1]);
             ++s1_count;
         }
 
     }
-    s1_big[s1_len][0] = to_lower(s1[s1_len-1]);
-    s1_big[s1_len][1] = '$';
+    s1_bigram[s1_len][0] = to_lower(s1[s1_len-1]);
+    s1_bigram[s1_len][1] = '$';
 
-    s2_big[0][0] = '$';
-    s2_big[0][1] = to_lower(s2[0]);
+    s2_bigram[0][0] = '$';
+    s2_bigram[0][1] = to_lower(s2[0]);
     for (i=0;i<s2_len-1;i++)
     {
         bool in = false;
         for (j=0;j<s2_count;j++)
-            if (to_lower(s2[i])==s2_big[j][0]&&to_lower(s2[i+1])==s2_big[j][1])
+            if (to_lower(s2[i])==s2_bigram[j][0]&&to_lower(s2[i+1])==s2_bigram[j][1])
             {
                 in = true;
                 break;
             }
         if (!in)
         {
-            s2_big[s2_count][0] = to_lower(s2[i]);
-            s2_big[s2_count][1] = to_lower(s2[i+1]);
+            s2_bigram[s2_count][0] = to_lower(s2[i]);
+            s2_bigram[s2_count][1] = to_lower(s2[i+1]);
             ++s2_count;
         }
 
     }
-    s2_big[s2_len][0] = to_lower(s2[s2_len-1]);
-    s2_big[s2_len][1] = '$';
+    s2_bigram[s2_len][0] = to_lower(s2[s2_len-1]);
+    s2_bigram[s2_len][1] = '$';
 
     ++s1_count;
     ++s2_count;
 
     for (i=0;i<s1_count;i++)
         for (j=0;j<s2_count;j++)
-            if (s1_big[i][0]==s2_big[j][0]&&s1_big[i][1]==s2_big[j][1])
+            if (s1_bigram[i][0]==s2_bigram[j][0]&&s1_bigram[i][1]==s2_bigram[j][1])
             {
                 ++intersect_count;
                 break;
