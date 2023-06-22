@@ -1450,8 +1450,8 @@ Datum jaccard_index(PG_FUNCTION_ARGS)
         }
 
     }
-    s1_bigram[s1_len][0] = to_lower(s1[s1_len-1]);
-    s1_bigram[s1_len][1] = '$';
+    s1_bigram[s1_count][0] = to_lower(s1[s1_len-1]);
+    s1_bigram[s1_count][1] = '$';
 
     s2_bigram[0][0] = '$';
     s2_bigram[0][1] = to_lower(s2[0]);
@@ -1472,8 +1472,8 @@ Datum jaccard_index(PG_FUNCTION_ARGS)
         }
 
     }
-    s2_bigram[s2_len][0] = to_lower(s2[s2_len-1]);
-    s2_bigram[s2_len][1] = '$';
+    s2_bigram[s2_count][0] = to_lower(s2[s2_len-1]);
+    s2_bigram[s2_count][1] = '$';
 
     ++s1_count;
     ++s2_count;
