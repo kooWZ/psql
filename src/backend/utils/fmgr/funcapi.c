@@ -1278,11 +1278,9 @@ rest_of_char_same(const char *s1, const char *s2, int len)
 }
 
 static char inline
-to_lower(char c)
-{
-    if (c >= 'A' && c <= 'Z')
-    {
-        return c+32;
+to_lower(char c) {
+    if (c >= 'A' && c <= 'Z') {
+        return c + 32;
     } else {
         return c;
     }
