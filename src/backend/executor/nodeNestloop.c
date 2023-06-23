@@ -374,7 +374,7 @@ ExecNestLoop(NestLoopState *node)
                 node->nl_MatchedOuter = true;
 
                 /* In an antijoin, we never return a matched tuple */
-                if (node->js.jointype == JOIN_ANTI) //fixed, TODO test
+                if (node->js.jointype == JOIN_ANTI)
                 {
                     node->nl_ExcludedOuter = lappend_int(node->nl_ExcludedOuter, get_readptr_index(block)-1);
                     node->nl_NeedNewOuter = true;
@@ -393,7 +393,7 @@ ExecNestLoop(NestLoopState *node)
                  * In a semijoin, we'll consider returning the first match, but
                  * after that we're done with this outer tuple.
                  */
-                if (node->js.jointype == JOIN_SEMI) //TODO test
+                if (node->js.jointype == JOIN_SEMI)
                 {
                     node->nl_ExcludedOuter = lappend_int(node->nl_ExcludedOuter, get_readptr_index(block)-1);
                     node->nl_NeedNewOuter = true;
