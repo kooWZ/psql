@@ -1338,7 +1338,6 @@ Datum levenshtein_distance(PG_FUNCTION_ARGS)
     int m, n;
     int *prev, *curr;
     int i, j;
-    int result;
     const char *s_data, *t_data;
     const char *y;
 
@@ -1394,10 +1393,7 @@ Datum levenshtein_distance(PG_FUNCTION_ARGS)
         y += 1;
     }
 
-    result = prev[m - 1];
-    pfree(prev);
-
-    PG_RETURN_INT32(result);
+    PG_RETURN_INT32(prev[m - 1]);
 }
 
 Datum jaccard_index(PG_FUNCTION_ARGS)
