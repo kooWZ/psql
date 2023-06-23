@@ -287,15 +287,13 @@ ExecNestLoop(NestLoopState *node)
              */
             continue;
         }
-        /*
-         * 两种情况：
-         * 1. 外表数正好是block_size的倍数，那么fetch新表时会返回一个长度为0的表，下面的get_tuplestore_len(block) == 0可以捕捉到
-         * 2. 不是倍数，那么最后一个block不满，比较完最后一个block之后，不应该fetch下一个block
-         */
+
         /*
          * 更新外表Block
+         * 两种情况：
+         * 1. 外表数正好是block_size的倍数，那么fetch新表时会返回一个长度为0的表，下面的get_tuplestore_len(block) == 0可以捕捉到
+         * 2. 不是倍数，那么最后一个block不满，nl_reachedBlockEnd为true，比较完最后一个block之后，不应该fetch下一个block
          */
-
         if (node->nl_NeedNewBlock)
         {
             /*
