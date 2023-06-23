@@ -1371,7 +1371,6 @@ Datum levenshtein_distance(PG_FUNCTION_ARGS)
     {
         int *temp;
         const char *x = s_data;
-        int y_char_len = 1;
 
         curr[0] = j;
         i = 1;
@@ -1392,7 +1391,7 @@ Datum levenshtein_distance(PG_FUNCTION_ARGS)
         curr = prev;
         prev = temp;
 
-        y += y_char_len;
+        y += 1;
     }
 
     result = prev[m - 1];
@@ -1429,8 +1428,6 @@ Datum jaccard_index(PG_FUNCTION_ARGS)
     intersect_count = 0;
 
     s1_count = 1;
-    s2_count = 1;
-
     s1_bigram[0][0] = '$';
     s1_bigram[0][1] = to_lower(s1[0]);
     for (i=0;i<s1_len-1;i++)
@@ -1452,7 +1449,9 @@ Datum jaccard_index(PG_FUNCTION_ARGS)
     }
     s1_bigram[s1_count][0] = to_lower(s1[s1_len-1]);
     s1_bigram[s1_count][1] = '$';
+    ++s1_count;
 
+    s2_count = 1;
     s2_bigram[0][0] = '$';
     s2_bigram[0][1] = to_lower(s2[0]);
     for (i=0;i<s2_len-1;i++)
@@ -1474,8 +1473,6 @@ Datum jaccard_index(PG_FUNCTION_ARGS)
     }
     s2_bigram[s2_count][0] = to_lower(s2[s2_len-1]);
     s2_bigram[s2_count][1] = '$';
-
-    ++s1_count;
     ++s2_count;
 
     for (i=0;i<s1_count;i++)
