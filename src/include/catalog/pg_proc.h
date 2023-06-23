@@ -4327,7 +4327,7 @@ DESCR("fetch the Nth row value");
 
 DATA(insert OID = 4375 ( levenshtein_distance PGNSP PGUID 12 1 0 0 f f f t f i 2 0 20 "25 25" _null_ _null_ _null_ _null_ levenshtein_distance _null_ _null_ _null_ ));
 DESCR("levenshtein_distance");
-DATA(insert OID = 4377 ( levenshtein_distance_traditional PGNSP PGUID 12 1 0 0 f f f t f i 2 0 20 "25 25" _null_ _null_ _null_ _null_ levenshtein_distance _null_ _null_ _null_ ));
+DATA(insert OID = 4377 ( levenshtein_distance_traditional PGNSP PGUID 12 1 0 0 f f f t f i 2 0 20 "25 25" _null_ _null_ _null_ _null_ levenshtein_distance_traditional _null_ _null_ _null_ ));
 DESCR("levenshtein_distance_traditional");
 DATA(insert OID = 4376 ( jaccard_index PGNSP PGUID 12 1 0 0 f f f t f i 2 0 700 "25 25" _null_ _null_ _null_ _null_ jaccard_index _null_ _null_ _null_ ));
 DESCR("jaccard index");
